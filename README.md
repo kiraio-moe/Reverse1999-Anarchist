@@ -1,7 +1,17 @@
 <div align="center">
-    <p>Reverse: 1999 - Anarchist is an asset encrypt & decryptor for <a href="https://re1999.bluepoch.com/" title="Visit Reverse 199 official page">Reverse: 1999</a> game by BLUEPOCH.<br/>This is the C# implementation of <a href="https://github.com/wanderer-moe/reverse1999-decrypt" title="See the repository">reverse1999-decrypt</a> by <a href="https://github.com/wanderer-moe" title="Visit the profile">wanderer-moe</a>.</p>
-    <sub>Add me as your friend UwU ~> XXX</sub>
+  <img src="./img/anarchist-banner.png" />
+  <p><a href="https://re1999.bluepoch.com/" title="Visit Reverse 199 official page">Reverse: 1999</a> [BLUEPOCH] game assets encoder/decoder.</p>
+  <sup>Add me as your friend UwU</sup>
+  <br/>
+  <img src="./img/kiraio-reverse1999.png" />
+  <br/>
+  <sup>ID: 407997580</sup>
 </div>
+
+## Features
+
+- Encrypt/Decrypt asset bundle file (`.dat`).
+- Unpack/Repack Wwise (Wave Works Interactive Sound Engine) files (`.bnk`, `.wem`) [Ongoing]
 
 ## Requirements
 
@@ -9,15 +19,20 @@
 
 ## Usages
 
+- Run the executable normally or through CLI: `Reverse1999-Anarchist.exe <some_asset_bundle.dat> <other_asset_bundle.dat> <etc.dat>`.
 - Encrypt
-  - 
+  - If the asset bundle name have `_DEC` suffix, it will perform encryption.
 - Decrypt
-  - 
+  - If the asset bundle name doesn't have any suffix or have `_MOD` suffix, it will perform decryption.
 
 ## License
 
 This project is licensed under GNU GPL 3.0.
 For more information about the GNU General Public License version 3.0 (GNU GPL 3.0), please refer to the official GNU website: <https://www.gnu.org/licenses/gpl-3.0.html>
+
+## Credits
+
+- [wanderer-moe](https://github.com/wanderer-moe "Visit wanderer-moe GitHub profile") for [reverse1999-decrypt](https://github.com/wanderer-moe/reverse1999-decrypt "Visit reverse1999-decrypt repository").
 
 ## Disclaimer
 
