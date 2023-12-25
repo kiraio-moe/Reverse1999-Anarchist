@@ -1,90 +1,213 @@
-﻿using System.Reflection;
+﻿using NativeFileDialogSharp;
 
 namespace Reverse1999
 {
-    public class Timekeeper
+    internal class Timekeeper
     {
-        const byte DECRYPTION_KEY = 0x55;
-        const byte VERIFICATION_KEY = 0x6E;
-        const string DECRYPTED_BUNDLES_DIR = "bundles_decoded";
-        const string ENCRYPTED_BUNDLES_DIR = "bundles_encoded";
-        const string BUNDLES_DIR = "bundles";
-
-        class FileDecryptor
+        const string VERSION = "1.0.0";
+        private static readonly byte[] UNITYFS_ID = { 0x55, 0x6E, 0x69, 0x74, 0x79, 0x46, 0x53 };
+        private static readonly byte[] UNITYFS_ENCRYPTED_ID =
         {
-            public string DecryptedPath { get; }
+            0xDF,
+            0xE4,
+            0xE3,
+            0xFE,
+            0xF3,
+            0xCC,
+            0xD9
+        };
 
-            public FileDecryptor(string bundlesPath)
+        private enum OperationType
+        {
+            Decrypt,
+            Encrypt
+        }
+
+        private class BundleDecryptor
+        {
+            private static byte[] XorDataChunk(byte[] chunk, byte key)
             {
-                DecryptedPath = Path.Combine(bundlesPath, DECRYPTED_BUNDLES_DIR);
-
-                if (!Directory.Exists(DecryptedPath))
-                    Directory.CreateDirectory(DecryptedPath);
-            }
-
-            static byte[] DecryptDataChunk(byte[] chunk, byte key)
-            {
-                byte[] decryptedChunk = new byte[chunk.Length];
+                byte[] xoredChunk = new byte[chunk.Length];
 
                 for (int i = 0; i < chunk.Length; i++)
-                    decryptedChunk[i] = (byte)(chunk[i] ^ key);
+                    xoredChunk[i] = (byte)(chunk[i] ^ key);
 
-                return decryptedChunk;
+                return xoredChunk;
             }
 
-            public static void DecryptFile(string inputPath, string outputPath)
+            private static bool TestHeader(byte[] originalHeader, byte[] comparisonHeader)
             {
-                byte[] inputData = File.ReadAllBytes(inputPath);
-                byte key = (byte)(inputData[0] ^ DECRYPTION_KEY); // generate xor key from the first byte
-                Console.WriteLine($"XOR Key: {key}");
-
-                if (key != (byte)(inputData[1] ^ VERIFICATION_KEY)) // verify key with the second byte
-                    throw new Exception("Invalid key");
-
-                byte[] decryptedData = DecryptDataChunk(inputData, key); // decrypt the entire data
-                File.WriteAllBytes(outputPath, decryptedData);
+                for (int i = 0; i < comparisonHeader.Length; i++)
+                {
+                    if (originalHeader[i] != comparisonHeader[i])
+                        return false;
+                }
+                return true;
             }
 
-            public (TimeSpan Duration, int FilesDecrypted) DecryptBundles(string bundlesPath)
+            private static byte GenerateKey(byte key, OperationType operationType)
+            {
+                return (byte)(
+                    key
+                    ^ (
+                        operationType == OperationType.Encrypt
+                            ? UNITYFS_ENCRYPTED_ID[0]
+                            : UNITYFS_ID[0]
+                    )
+                );
+            }
+
+            private static string GetOutputPath(string assetPath, string assetFileName)
+            {
+                string directory = Path.GetDirectoryName(assetPath) ?? string.Empty;
+
+                if (assetFileName.Contains("_MOD"))
+                    return Path.Combine(directory, assetFileName.Replace("_MOD", "_DEC"));
+
+                if (assetFileName.Contains("_DEC"))
+                    return Path.Combine(directory, assetFileName.Replace("_DEC", "_MOD"));
+
+                return Path.Combine(
+                    directory,
+                    $"{Path.GetFileNameWithoutExtension(assetPath)}_DEC{Path.GetExtension(assetPath)}"
+                );
+            }
+
+            private static void ProcessFile(
+                string inputPath,
+                string outputPath,
+                OperationType operationType
+            )
+            {
+                try
+                {
+                    byte[] inputData = File.ReadAllBytes(inputPath);
+                    byte key = GenerateKey(inputData[0], operationType);
+
+                    byte[] comparisonHeader =
+                        operationType == OperationType.Encrypt ? UNITYFS_ID : UNITYFS_ENCRYPTED_ID;
+
+                    if (!TestHeader(inputData, comparisonHeader))
+                    {
+                        Console.WriteLine("Invalid asset bundle file!");
+                        return;
+                    }
+
+                    Console.WriteLine($"Operation: {operationType}");
+                    Console.WriteLine(
+                        $"Saving Xor-ed asset bundle {Path.GetFileName(inputPath)} as {outputPath}."
+                    );
+                    byte[] xoredData = XorDataChunk(inputData, key);
+                    File.WriteAllBytes(outputPath, xoredData);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error! {ex.Message}. Skipping...");
+                }
+            }
+
+            public static void XorBundleFile(string inputPath, string outputPath)
+            {
+                string assetFileName = Path.GetFileNameWithoutExtension(inputPath);
+                OperationType operationType = assetFileName[^4..] switch
+                {
+                    "_DEC" => OperationType.Encrypt,
+                    _ => OperationType.Decrypt,
+                };
+                ProcessFile(inputPath, outputPath, operationType);
+            }
+
+            public static (TimeSpan Duration, int FilesXored) XorBundleAssets(string[] assetPaths)
             {
                 DateTime startTime = DateTime.Now;
-                int filesDecrypted = 0;
+                int filesXored = 0;
 
                 Parallel.ForEach(
-                    Directory.EnumerateFiles(bundlesPath, "*.dat", SearchOption.AllDirectories),
+                    assetPaths,
                     new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
-                    filePath =>
+                    assetPath =>
                     {
-                        string outputPath = Path.Combine(DecryptedPath, Path.GetFileName(filePath));
-                        DecryptFile(filePath, outputPath);
-                        filesDecrypted++;
-                        Console.WriteLine(
-                            $"Decrypted {Path.GetFileName(filePath)} to {outputPath}"
-                        );
+                        try
+                        {
+                            string assetFileName = Path.GetFileName(assetPath);
+                            string outputPath = GetOutputPath(assetPath, assetFileName);
+
+                            XorBundleFile(assetPath, outputPath);
+                            filesXored++;
+                        }
+                        catch { }
                     }
                 );
 
                 TimeSpan duration = DateTime.Now - startTime;
-                return (duration, filesDecrypted);
+                return (duration, filesXored);
             }
         }
 
-        static void Main()
+        private static void PrintHelp()
         {
-            string? cwd =
-                Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? string.Empty;
-            string? bundlesPath = Path.Combine(cwd, BUNDLES_DIR);
+            Console.Title = "Reverse: 1999 - Anarchist";
+            Console.WriteLine(
+                "Reverse: 1999 - Anarchist is an asset encryptor & decryptor for Reverse: 1999 game by BLUEPOCH."
+            );
+            Console.WriteLine(
+                "For more information, visit: https://github.com/kiraio-moe/Reverse1999-Anarchist"
+            );
+            Console.WriteLine($"Version: {VERSION}");
+            Console.WriteLine(
+                "Usage: Asset bundle WITHOUT any suffix/has '_MOD' suffix will be DECRYPTED | '_DEC' suffix will be ENCRYPTED"
+            );
+            Console.WriteLine();
+        }
 
-            Console.WriteLine($"Path: {bundlesPath}");
+        private static void Main(string[] args)
+        {
+            PrintHelp();
 
-            FileDecryptor decryptor = new(bundlesPath);
-            (TimeSpan duration, int filesDecrypted) = decryptor.DecryptBundles(bundlesPath);
+            string? cwd = Path.GetDirectoryName(AppContext.BaseDirectory);
+            string[]? assetsPath = args;
 
+            PickFile:
+            if (args.Length < 1)
+            {
+                Console.WriteLine(
+                    "Press SPACE BAR to perform encryption/decryption operation, X to exit."
+                );
+                ConsoleKeyInfo keyInfo = Console.ReadKey(true);
+
+                switch (keyInfo.Key)
+                {
+                    case ConsoleKey.Spacebar:
+                        Console.WriteLine("Opening file dialog...");
+                        DialogResult filePicker = Dialog.FileOpenMultiple(
+                            "dat",
+                            Path.GetDirectoryName(BadApple.GetLastOpenedFile()) ?? cwd
+                        );
+
+                        if (filePicker.IsCancelled)
+                        {
+                            Console.WriteLine("Canceled.");
+                            goto PickFile;
+                        }
+
+                        assetsPath = filePicker.Paths.ToArray();
+                        BadApple.SaveLastOpenedFile(assetsPath[0]);
+                        break;
+
+                    case ConsoleKey.X:
+                        return;
+
+                    default:
+                        goto PickFile;
+                }
+            }
+
+            (TimeSpan duration, int filesDecrypted) = BundleDecryptor.XorBundleAssets(assetsPath);
             double rps = filesDecrypted / duration.TotalSeconds;
-            Console.WriteLine($"Decryption completed in {duration}. Rate: {rps:F2} files/sec");
 
-            Console.WriteLine("Press any key to exit");
-            Console.ReadLine();
+            Console.WriteLine($"Xor-ing completed in {duration}. Rate: {rps:F2} files/sec");
+            Console.WriteLine();
+            goto PickFile;
         }
     }
 }
