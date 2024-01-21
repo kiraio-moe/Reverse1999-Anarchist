@@ -11,19 +11,20 @@
 ## Features
 
 - Encrypt/Decrypt asset bundle file (`.dat`).
-- Unpack/Repack Wwise (Wave Works Interactive Sound Engine) files (`.bnk`, `.wem`) [Ongoing]
+- Encode/Decode Wwise (Wave Works Interactive Sound Engine) files (`.bnk`, `.wem`) [Ongoing]
 
 ## Requirements
 
-- [.NET 6.0 SDK](https://dotnet.microsoft.com/download/dotnet/6.0 "Download .NET 6.0 SDK") or [.NET 7.0 SDK](https://dotnet.microsoft.com/download/dotnet/7.0 "Download .NET 7.0 SDK") or [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0 "Download .NET 8.0 SDK")
+- [.NET 6.0 SDK](https://dotnet.microsoft.com/download/dotnet/6.0 "Download .NET 6.0 SDK") / [.NET 7.0 SDK](https://dotnet.microsoft.com/download/dotnet/7.0 "Download .NET 7.0 SDK") / [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0 "Download .NET 8.0 SDK")
 
 ## Usages
 
-- Run the executable normally or through CLI: `Reverse1999-Anarchist.exe <some_asset_bundle.dat> <other_asset_bundle.dat> <etc.dat>`.
-- Encrypt
-  - If the asset bundle name have `_DEC` suffix, it will perform encryption.
-- Decrypt
-  - If the asset bundle name doesn't have any suffix or have `_MOD` suffix, it will perform decryption.
+- Asset Bundle
+  - Run the executable.
+  - Decrypt:  
+    Just choose ENCRYPTED asset bundle(s) to decrypt. The output file should have `_DEC` suffix.
+  - Encrypt:  
+    The encryption process requires you to put the ORIGINAL and DECRYPTED asset bundle(s) at the same directory. The DECRYPTED asset bundle(s) file name MUST follow this rule: `Original Name_whatever you put there`. This tool will detect a file with the name before the UNDERSCORE.
 
 ## License
 

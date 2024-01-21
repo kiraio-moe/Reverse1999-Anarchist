@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the target operating systems and architectures
-VERSION="1.0.0"
+VERSION="1.0.1"
 TARGET_OS_ARCHITECTURES=("win-x64" "win-arm64" "linux-x64" "linux-arm64" "osx-x64" "osx-arm64")
 TARGET_FRAMEWORKS=("net6.0" "net7.0" "net8.0")
 

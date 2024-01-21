@@ -4,28 +4,54 @@ namespace Reverse1999
 {
     internal class Timekeeper
     {
-        const string VERSION = "1.0.0";
-        private static readonly byte[] UNITYFS_ID = { 0x55, 0x6E, 0x69, 0x74, 0x79, 0x46, 0x53 };
-        private static readonly byte[] UNITYFS_ENCRYPTED_ID =
-        {
-            0xDF,
-            0xE4,
-            0xE3,
-            0xFE,
-            0xF3,
-            0xCC,
-            0xD9
-        };
+        const string VERSION = "1.0.1";
+        static readonly byte[] UNITYFS_ID = { 0x55, 0x6E, 0x69, 0x74, 0x79, 0x46, 0x53 };
 
-        private enum OperationType
+        enum OperationType
         {
             Decrypt,
-            Encrypt
+            Encrypt,
+            None
         }
 
-        private class BundleDecryptor
+        class BundleDecryptor
         {
-            private static byte[] XorDataChunk(byte[] chunk, byte key)
+            /// <summary>
+            /// Determine what type of operation should do with the asset bundle.
+            /// </summary>
+            /// <param name="data"></param>
+            /// <returns></returns>
+            static OperationType GetOperationType(byte[] data)
+            {
+                return data[0..7].SequenceEqual(UNITYFS_ID)
+                    ? OperationType.Encrypt
+                    : data[0..7]
+                        .Select((b, i) => (byte)(b ^ GenXorKey(data[0], UNITYFS_ID[0])))
+                        .SequenceEqual(UNITYFS_ID)
+                        ? OperationType.Decrypt
+                        : OperationType.None;
+            }
+
+            /// <summary>
+            /// Generate the XOR key.
+            /// The key is the XOR result of the first byte of the data with the character "U (0x55)" from "UNITYFS".
+            /// </summary>
+            /// <param name="dataFirstByte"></param>
+            /// <returns>XOR key.</returns>
+            static byte GenXorKey(byte dataFirstByte, byte key)
+            {
+                byte result = (byte)(dataFirstByte ^ key);
+                Console.WriteLine($"XOR Key: {dataFirstByte:X2} ^ {key:X2} = {result:X2}");
+                return result;
+            }
+
+            /// <summary>
+            /// Xor each data chunk with the given key.
+            /// </summary>
+            /// <param name="chunk"></param>
+            /// <param name="key"></param>
+            /// <returns>Xor-ed data.</returns>
+            static byte[] XorDataChunk(byte[] chunk, byte key)
             {
                 byte[] xoredChunk = new byte[chunk.Length];
 
@@ -35,86 +61,73 @@ namespace Reverse1999
                 return xoredChunk;
             }
 
-            private static bool TestHeader(byte[] originalHeader, byte[] comparisonHeader)
-            {
-                for (int i = 0; i < comparisonHeader.Length; i++)
-                {
-                    if (originalHeader[i] != comparisonHeader[i])
-                        return false;
-                }
-                return true;
-            }
-
-            private static byte GenerateKey(byte key, OperationType operationType)
-            {
-                return (byte)(
-                    key
-                    ^ (
-                        operationType == OperationType.Encrypt
-                            ? UNITYFS_ENCRYPTED_ID[0]
-                            : UNITYFS_ID[0]
-                    )
-                );
-            }
-
-            private static string GetOutputPath(string assetPath, string assetFileName)
+            static string GetOutputPath(string assetPath)
             {
                 string directory = Path.GetDirectoryName(assetPath) ?? string.Empty;
+                string assetFileName = Path.GetFileNameWithoutExtension(assetPath);
 
-                if (assetFileName.Contains("_MOD"))
-                    return Path.Combine(directory, assetFileName.Replace("_MOD", "_DEC"));
+                if (assetFileName[^4..] == "_MOD")
+                    return Path.Combine(
+                        directory,
+                        $"{assetFileName}_DEC{Path.GetExtension(assetPath)}"
+                    );
 
-                if (assetFileName.Contains("_DEC"))
-                    return Path.Combine(directory, assetFileName.Replace("_DEC", "_MOD"));
+                if (assetFileName[^4..] == "_DEC")
+                    return Path.Combine(
+                        directory,
+                        $"{assetFileName.Replace("_DEC", "_MOD")}{Path.GetExtension(assetPath)}"
+                    );
 
                 return Path.Combine(
                     directory,
-                    $"{Path.GetFileNameWithoutExtension(assetPath)}_DEC{Path.GetExtension(assetPath)}"
+                    $"{assetFileName}_DEC{Path.GetExtension(assetPath)}"
                 );
             }
 
-            private static void ProcessFile(
-                string inputPath,
-                string outputPath,
-                OperationType operationType
-            )
+            static void XorBundleFile(string inputPath, string outputPath)
             {
                 try
                 {
                     byte[] inputData = File.ReadAllBytes(inputPath);
-                    byte key = GenerateKey(inputData[0], operationType);
+                    byte key = 0;
 
-                    byte[] comparisonHeader =
-                        operationType == OperationType.Encrypt ? UNITYFS_ID : UNITYFS_ENCRYPTED_ID;
-
-                    if (!TestHeader(inputData, comparisonHeader))
+                    switch (GetOperationType(inputData))
                     {
-                        Console.WriteLine("Invalid asset bundle file!");
-                        return;
+                        case OperationType.Encrypt:
+                            Console.WriteLine("Operation: Encrypt");
+                            string originalAssetBundle = Path.Combine(Path.GetDirectoryName(inputPath) ?? inputPath, $"{Path.GetFileName(inputPath).Split('_')[0]}{Path.GetExtension(inputPath)}");
+
+                            if (!File.Exists(originalAssetBundle))
+                                throw new Exception($"No original asset bundle found: {originalAssetBundle}");
+
+                            using (
+                                FileStream fileStream =
+                                    new(originalAssetBundle, FileMode.Open, FileAccess.Read)
+                            )
+                            {
+                                key = GenXorKey(inputData[0], (byte)fileStream.ReadByte());
+                            }
+                            break;
+                        case OperationType.Decrypt:
+                            Console.WriteLine("Operation: Decrypt");
+                            key = GenXorKey(inputData[0], UNITYFS_ID[0]);
+                            break;
+                        case OperationType.None:
+                            throw new Exception("Invalid asset bundle file!");
                     }
 
-                    Console.WriteLine($"Operation: {operationType}");
-                    Console.WriteLine(
-                        $"Saving Xor-ed asset bundle {Path.GetFileName(inputPath)} as {outputPath}."
-                    );
+                    if (key == 0)
+                        return;
+
+                    Console.WriteLine($"Saving asset bundle as {outputPath}.");
+
                     byte[] xoredData = XorDataChunk(inputData, key);
                     File.WriteAllBytes(outputPath, xoredData);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error! {ex.Message}. Skipping...");
+                    Console.WriteLine($"Error! {ex.Message} Skipping...");
                 }
-            }
-
-            public static void XorBundleFile(string inputPath, string outputPath)
-            {
-                string assetFileName = Path.GetFileNameWithoutExtension(inputPath);
-                OperationType operationType = assetFileName[^4..] switch
-                {
-                    "_DEC" => OperationType.Encrypt,
-                    _ => OperationType.Decrypt,
-                };
-                ProcessFile(inputPath, outputPath, operationType);
             }
 
             public static (TimeSpan Duration, int FilesXored) XorBundleAssets(string[] assetPaths)
@@ -129,9 +142,7 @@ namespace Reverse1999
                     {
                         try
                         {
-                            string assetFileName = Path.GetFileName(assetPath);
-                            string outputPath = GetOutputPath(assetPath, assetFileName);
-
+                            string outputPath = GetOutputPath(assetPath);
                             XorBundleFile(assetPath, outputPath);
                             filesXored++;
                         }
@@ -144,7 +155,7 @@ namespace Reverse1999
             }
         }
 
-        private static void PrintHelp()
+        static void PrintHelp()
         {
             Console.Title = "Reverse: 1999 - Anarchist";
             Console.WriteLine(
@@ -155,17 +166,19 @@ namespace Reverse1999
             );
             Console.WriteLine($"Version: {VERSION}");
             Console.WriteLine(
-                "Usage: Asset bundle WITHOUT any suffix/has '_MOD' suffix will be DECRYPTED | '_DEC' suffix will be ENCRYPTED"
+                "Asset Bundle Usages: \n\t Decrypt: Just choose the ENCRYPTED asset bundle(s) to decrypt. The output file should have '_DEC' suffix. \n\t Encrypt: The encryption process requires you to put the ORIGINAL and DECRYPTED asset bundle(s) at the same directory. The DECRYPTED asset bundle(s) file name MUST follow this rule: \"Original Name_whatever you put there\". This tool will detect a file with the name before the UNDERSCORE."
             );
             Console.WriteLine();
         }
 
-        private static void Main(string[] args)
+        static void Main(string[] args)
         {
             PrintHelp();
 
             string? cwd = Path.GetDirectoryName(AppContext.BaseDirectory);
             string[]? assetsPath = args;
+
+            //! TODO: Arguments should be adjusted to perform decryption/encryption through CLI.
 
             PickFile:
             if (args.Length < 1)
